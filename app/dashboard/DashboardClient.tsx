@@ -436,7 +436,7 @@ export default function DashboardClient({ username }: { username: string }) {
                 </div>
                 {globalAmount && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
-                    <span style={{ fontSize: '12.5px', color: '#16a34a', fontWeight: 500 }}>✓ ${formatAmt(globalAmount)}</span>
+                    <span style={{ fontSize: '12.5px', color: '#16a34a', fontWeight: 500 }}>✓ $ {formatAmt(globalAmount)}</span>
                     <button onClick={() => { setGlobalAmount(''); setAmountOverrides(new Set()); }}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#a0a0a0', display: 'flex', padding: '2px', fontSize: '11px', fontFamily: 'Outfit,sans-serif' }}
                       title="Clear global amount"
@@ -624,7 +624,7 @@ export default function DashboardClient({ username }: { username: string }) {
                                           ) : isAmt ? (
                                             usingGlobalAmt ? (
                                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 11px', borderRadius: '7px', background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
-                                                <span style={{ fontSize: '13px', color: '#16a34a', fontWeight: 500, flex: 1 }}>${formatAmt(globalAmount)}</span>
+                                                <span style={{ fontSize: '13px', color: '#16a34a', fontWeight: 500, flex: 1 }}>$ {formatAmt(globalAmount)}</span>
                                                 <span style={{ fontSize: '10px', color: '#16a34a', background: '#dcfce7', padding: '1px 6px', borderRadius: '10px', fontWeight: 600, whiteSpace: 'nowrap' }}>global</span>
                                               </div>
                                             ) : (
