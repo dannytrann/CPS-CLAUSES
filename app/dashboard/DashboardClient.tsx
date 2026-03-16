@@ -1,8 +1,10 @@
 'use client';
 
-import React, { useState, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { CLAUSES, CATEGORIES, SECTIONS, type Clause } from '@/lib/clauses';
+import { CLAUSES, CATEGORIES, SECTIONS, CLAUSE_ORDER, BUILT_IN_PRESETS, type Clause } from '@/lib/clauses';
+import { saveSession, loadSession, clearSession, loadTemplates, saveTemplate, deleteTemplate, type Template } from '@/lib/storage';
+import { findConflicts } from '@/lib/conflicts';
 
 type FieldValues = Record<number, string>;
 type SelectedClause = { clause: Clause; fieldValues: FieldValues };
@@ -35,9 +37,9 @@ function formatAmt(raw: string) {
   const n = parseFloat(raw);
   return isNaN(n) ? raw : n.toLocaleString('en-CA');
 }
-function fillText(clause: Clause, fv: FieldValues, globalDate: string, dateOverrides: Overrides, globalAmount: string, amountOverrides: Overrides) {
+function fillText(clause: Clause, fv: FieldValues, globalDate: string, dateOverrides: Overrides, globalAmount: string, amountOverrides: Overrides, agentName: string) {
   let i = 0;
-  return clause.text.replace(/_{3,}/g, () => {
+  let result = clause.text.replace(/_{3,}/g, () => {
     const f = clause.fields[i];
     const key = `${clause.id}::${i}`;
     let v = fv[i] || '';
@@ -52,6 +54,8 @@ function fillText(clause: Clause, fv: FieldValues, globalDate: string, dateOverr
     }
     return v || '___________';
   });
+  result = result.replace(/Judit Hernadi/g, agentName || '___________');
+  return result;
 }
 
 function hour() {
@@ -63,15 +67,12 @@ function hour() {
 const Icon = {
   home:    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,
   file:    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>,
-  tag:     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>,
   list:    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>,
   copy:    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>,
   check:   <svg width="9" height="7" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>,
   checkGr: <svg width="11" height="9" viewBox="0 0 12 10" fill="none"><path d="M1 5l4 4 6-8" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>,
   x:       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
   search:  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>,
-  bell:    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>,
-  help:    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
   logout:  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>,
 };
 
@@ -111,10 +112,64 @@ export default function DashboardClient({ username }: { username: string }) {
   const [dateOverrides, setDateOverrides] = useState<Overrides>(new Set());
   const [globalAmount, setGlobalAmount] = useState('');
   const [amountOverrides, setAmountOverrides] = useState<Overrides>(new Set());
+  const [globalAgentName, setGlobalAgentName] = useState(() => {
+    if (typeof window !== 'undefined') return localStorage.getItem('agentName') || '';
+    return '';
+  });
   const [confirmRemove, setConfirmRemove] = useState<Clause | null>(null);
+  const [confirmClearAll, setConfirmClearAll] = useState(false);
+  const [userTemplates, setUserTemplates] = useState<Template[]>([]);
+  const [templateName, setTemplateName] = useState('');
+  const [showSaveTemplate, setShowSaveTemplate] = useState(false);
+  const [confirmLoadPreset, setConfirmLoadPreset] = useState<{ name: string; clauseIds: string[] } | null>(null);
+  const [conflictPrompt, setConflictPrompt] = useState<{ incoming: Clause; existingId: string } | null>(null);
+  const [hydrated, setHydrated] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clauseMap = useMemo(() => Object.fromEntries(CLAUSES.map(c => [c.id, c])), []);
+  const titleMap = useMemo(() => Object.fromEntries(CLAUSES.map(c => [c.id, c.title])), []);
 
   const displayName = username.charAt(0).toUpperCase() + username.slice(1);
+
+  // ── Hydrate from localStorage on mount ──
+  useEffect(() => {
+    const session = loadSession();
+    if (session) {
+      const map = new Map<string, SelectedClause>();
+      for (const [id, data] of Object.entries(session.selected)) {
+        const clause = clauseMap[data.clauseId];
+        if (clause) map.set(id, { clause, fieldValues: data.fieldValues });
+      }
+      setSelected(map);
+      if (session.globalDate) setGlobalDate(session.globalDate);
+      if (session.globalAmount) setGlobalAmount(session.globalAmount);
+      setDateOverrides(new Set(session.dateOverrides));
+      setAmountOverrides(new Set(session.amountOverrides));
+    }
+    setUserTemplates(loadTemplates());
+    setHydrated(true);
+  }, [clauseMap]);
+
+  // ── Debounced save to localStorage ──
+  useEffect(() => {
+    if (!hydrated) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      const serialized: Record<string, { clauseId: string; fieldValues: Record<number, string> }> = {};
+      for (const [id, entry] of selected.entries()) {
+        serialized[id] = { clauseId: entry.clause.id, fieldValues: entry.fieldValues };
+      }
+      saveSession({
+        selected: serialized,
+        globalDate,
+        globalAmount,
+        dateOverrides: Array.from(dateOverrides),
+        amountOverrides: Array.from(amountOverrides),
+      });
+    }, 300);
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+  }, [selected, globalDate, globalAmount, dateOverrides, amountOverrides, hydrated]);
 
   const filtered = useMemo(() => {
     let list = CLAUSES;
@@ -146,11 +201,23 @@ export default function DashboardClient({ username }: { username: string }) {
     })
   ).length;
 
+  // ── Conflict detection ──
+  const conflicts = useMemo(() => {
+    const ids = Array.from(selected.keys());
+    return findConflicts(ids, titleMap);
+  }, [selected, titleMap]);
+
   const toggle = useCallback((c: Clause) => {
     if (selected.has(c.id)) {
       setConfirmRemove(c);
     } else {
-      setSelected(prev => { const n = new Map(prev); n.set(c.id, { clause: c, fieldValues: {} }); return n; });
+      // Check for subject/waiver conflict before adding
+      const conflictId = c.id.endsWith('W') ? c.id.slice(0, -1) : c.id + 'W';
+      if (selected.has(conflictId)) {
+        setConflictPrompt({ incoming: c, existingId: conflictId });
+      } else {
+        setSelected(prev => { const n = new Map(prev); n.set(c.id, { clause: c, fieldValues: {} }); return n; });
+      }
     }
   }, [selected]);
 
@@ -159,6 +226,48 @@ export default function DashboardClient({ username }: { username: string }) {
     setSelected(prev => { const n = new Map(prev); n.delete(confirmRemove.id); return n; });
     setConfirmRemove(null);
   }, [confirmRemove]);
+
+  const doClearAll = useCallback(() => {
+    setSelected(new Map());
+    setConfirmClearAll(false);
+    clearSession();
+  }, []);
+
+  const loadPreset = useCallback((clauseIds: string[]) => {
+    const map = new Map<string, SelectedClause>();
+    for (const id of clauseIds) {
+      const clause = clauseMap[id];
+      if (clause) map.set(id, { clause, fieldValues: {} });
+    }
+    setSelected(map);
+    setConfirmLoadPreset(null);
+  }, [clauseMap]);
+
+  const handleLoadPreset = useCallback((name: string, clauseIds: string[]) => {
+    if (selected.size > 0) {
+      setConfirmLoadPreset({ name, clauseIds });
+    } else {
+      loadPreset(clauseIds);
+    }
+  }, [selected.size, loadPreset]);
+
+  const handleSaveTemplate = useCallback(() => {
+    if (!templateName.trim() || selected.size === 0) return;
+    const t: Template = {
+      id: Date.now().toString(),
+      name: templateName.trim(),
+      clauseIds: Array.from(selected.keys()),
+    };
+    saveTemplate(t);
+    setUserTemplates(loadTemplates());
+    setTemplateName('');
+    setShowSaveTemplate(false);
+  }, [templateName, selected]);
+
+  const handleDeleteTemplate = useCallback((id: string) => {
+    deleteTemplate(id);
+    setUserTemplates(loadTemplates());
+  }, []);
 
   const setField = useCallback((id: string, idx: number, val: string) => {
     setSelected(prev => {
@@ -175,16 +284,20 @@ export default function DashboardClient({ username }: { username: string }) {
     for (const e of selected.values()) {
       (e.clause.variant === 'subject' || e.clause.category === 'SUBJECTS/CONDITIONS' ? subj : terms).push(e);
     }
+    // Sort both arrays by canonical document order
+    const byOrder = (a: SelectedClause, b: SelectedClause) => (CLAUSE_ORDER[a.clause.id] ?? 999) - (CLAUSE_ORDER[b.clause.id] ?? 999);
+    subj.sort(byOrder);
+    terms.sort(byOrder);
     subj.forEach((e, i) => {
-      lines.push(`${i+1}. ${e.clause.title.replace(/\s*\(.*?\)\s*/g,'').trim()}: ${fillText(e.clause, e.fieldValues, globalDate, dateOverrides, globalAmount, amountOverrides)}`);
+      lines.push(`${i+1}. ${e.clause.title.replace(/\s*\(.*?\)\s*/g,'').trim()}: ${fillText(e.clause, e.fieldValues, globalDate, dateOverrides, globalAmount, amountOverrides, globalAgentName)}`);
       lines.push('');
     });
     if (terms.length) {
       lines.push('TERMS AND CONDITIONS:', '');
-      terms.forEach(e => { lines.push(`${e.clause.title.replace(/\s*\(.*?\)\s*/g,'').trim()}: ${fillText(e.clause, e.fieldValues, globalDate, dateOverrides, globalAmount, amountOverrides)}`); lines.push(''); });
+      terms.forEach((e, i) => { lines.push(`${i+1}. ${e.clause.title.replace(/\s*\(.*?\)\s*/g,'').trim()}: ${fillText(e.clause, e.fieldValues, globalDate, dateOverrides, globalAmount, amountOverrides, globalAgentName)}`); lines.push(''); });
     }
     return lines.join('\n').trim();
-  }, [selected, cnt, globalDate, dateOverrides, globalAmount, amountOverrides]);
+  }, [selected, cnt, globalDate, dateOverrides, globalAmount, amountOverrides, globalAgentName]);
 
   const setOverride = useCallback((clauseId: string, blankIndex: number, enable: boolean) => {
     setDateOverrides(prev => {
@@ -310,6 +423,90 @@ export default function DashboardClient({ username }: { username: string }) {
               count={CLAUSES.filter(c => c.category === cat).length}
             />
           ))}
+
+          {/* My Presets */}
+          <p style={{ fontSize: '10px', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#a0a0a0', padding: '16px 10px 4px', display: 'block' }}>Presets</p>
+          {BUILT_IN_PRESETS.map(p => (
+            <button key={p.id} onClick={() => handleLoadPreset(p.name, [...p.clauseIds])}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '9px',
+                width: '100%', padding: '7px 10px', borderRadius: '7px',
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                color: '#6b6b6b', fontSize: '13.5px', fontWeight: 400,
+                fontFamily: 'Outfit, sans-serif', textAlign: 'left',
+                transition: 'background 0.1s, color 0.1s',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#f8f8f6'; (e.currentTarget as HTMLElement).style.color = '#111'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = '#6b6b6b'; }}>
+              <span style={{ color: '#a0a0a0', display: 'flex', alignItems: 'center', fontSize: '12px' }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
+              </span>
+              <span style={{ flex: 1 }}>{p.name}</span>
+              <span style={{ fontSize: '11px', color: '#a0a0a0' }}>{p.clauseIds.length}</span>
+            </button>
+          ))}
+          {userTemplates.map(t => (
+            <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: '0', width: '100%' }}>
+              <button onClick={() => handleLoadPreset(t.name, t.clauseIds)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '9px',
+                  flex: 1, padding: '7px 4px 7px 10px', borderRadius: '7px 0 0 7px',
+                  background: 'transparent', border: 'none', cursor: 'pointer',
+                  color: '#6b6b6b', fontSize: '13.5px', fontWeight: 400,
+                  fontFamily: 'Outfit, sans-serif', textAlign: 'left',
+                  transition: 'background 0.1s, color 0.1s', minWidth: 0,
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#f8f8f6'; (e.currentTarget as HTMLElement).style.color = '#111'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = '#6b6b6b'; }}>
+                <span style={{ color: '#a0a0a0', display: 'flex', alignItems: 'center', fontSize: '12px' }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
+                </span>
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
+                <span style={{ fontSize: '11px', color: '#a0a0a0', flexShrink: 0 }}>{t.clauseIds.length}</span>
+              </button>
+              <button onClick={() => handleDeleteTemplate(t.id)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d4d4d2', display: 'flex', padding: '4px 8px 4px 4px', flexShrink: 0 }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = '#dc2626'}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = '#d4d4d2'}
+                title="Delete preset">
+                {Icon.x}
+              </button>
+            </div>
+          ))}
+          {selected.size > 0 && (
+            showSaveTemplate ? (
+              <div style={{ padding: '6px 10px', display: 'flex', gap: '6px' }}>
+                <input type="text" value={templateName} onChange={e => setTemplateName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleSaveTemplate()}
+                  placeholder="Preset name…" className="finput"
+                  style={{ flex: 1, fontSize: '12px', padding: '5px 8px' }}
+                  autoFocus />
+                <button onClick={handleSaveTemplate} className="btn-dark"
+                  style={{ padding: '5px 10px', fontSize: '11px' }}
+                  disabled={!templateName.trim()}>
+                  Save
+                </button>
+                <button onClick={() => { setShowSaveTemplate(false); setTemplateName(''); }}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#a0a0a0', display: 'flex', padding: '2px' }}>
+                  {Icon.x}
+                </button>
+              </div>
+            ) : (
+              <button onClick={() => setShowSaveTemplate(true)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  width: '100%', padding: '7px 10px', borderRadius: '7px',
+                  background: 'transparent', border: '1px dashed #d4d4d2', cursor: 'pointer',
+                  color: '#a0a0a0', fontSize: '12px', fontWeight: 500,
+                  fontFamily: 'Outfit, sans-serif', textAlign: 'left',
+                  transition: 'border-color 0.1s, color 0.1s', marginTop: '4px',
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#111'; (e.currentTarget as HTMLElement).style.color = '#111'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = '#d4d4d2'; (e.currentTarget as HTMLElement).style.color = '#a0a0a0'; }}>
+                + Save current as preset
+              </button>
+            )
+          )}
         </nav>
 
         {/* User */}
@@ -342,11 +539,6 @@ export default function DashboardClient({ username }: { username: string }) {
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            {[Icon.bell, Icon.help].map((ic, i) => (
-              <button key={i} style={{ width: '32px', height: '32px', border: '1px solid #e8e8e6', borderRadius: '7px', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#a0a0a0' }}>
-                {ic}
-              </button>
-            ))}
             {cnt > 0 && missingFields.length > 0 && (
               <span style={{ fontSize: '12px', color: '#d97706', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
@@ -460,6 +652,46 @@ export default function DashboardClient({ username }: { username: string }) {
               </div>
             </div>
 
+            {/* Global Agent Name */}
+            <div style={{
+              flex: '1 1 280px', minWidth: '260px',
+              background: globalAgentName ? '#fff' : '#f5f3ff',
+              border: `1px solid ${globalAgentName ? '#e8e8e6' : '#ddd6fe'}`,
+              borderRadius: '10px', padding: '12px 16px',
+              display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                <span style={{ fontSize: '17px', lineHeight: 1 }}>👤</span>
+                <div>
+                  <p style={{ fontSize: '12.5px', fontWeight: 600, color: '#111', lineHeight: 1.2 }}>Agent Name</p>
+                  <p style={{ fontSize: '11px', color: '#a0a0a0', lineHeight: 1.3 }}>Replaces agent name in clauses</p>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1 1 180px', minWidth: '160px' }}>
+                <input type="text" value={globalAgentName}
+                  onChange={e => { setGlobalAgentName(e.target.value); localStorage.setItem('agentName', e.target.value); }}
+                  placeholder="Enter agent name…" className="finput"
+                  style={{ flex: 1, fontWeight: globalAgentName ? 600 : 400, borderColor: globalAgentName ? '#111' : '#c4b5fd', fontSize: '13.5px', background: globalAgentName ? '#fff' : '#f5f3ff' }}
+                />
+                {!globalAgentName && (
+                  <button onClick={() => { setGlobalAgentName(displayName); localStorage.setItem('agentName', displayName); }}
+                    style={{ background: '#7c3aed', color: '#fff', border: 'none', cursor: 'pointer', borderRadius: '6px', padding: '5px 10px', fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap', fontFamily: 'Outfit,sans-serif' }}>
+                    Use my name
+                  </button>
+                )}
+                {globalAgentName && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
+                    <span style={{ fontSize: '12.5px', color: '#16a34a', fontWeight: 500 }}>✓ {globalAgentName}</span>
+                    <button onClick={() => { setGlobalAgentName(''); localStorage.removeItem('agentName'); }}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#a0a0a0', display: 'flex', padding: '2px', fontSize: '11px', fontFamily: 'Outfit,sans-serif' }}
+                      title="Clear agent name"
+                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = '#dc2626'}
+                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = '#a0a0a0'}>✕ clear</button>
+                  </div>
+                )}
+              </div>
+            </div>
+
           </div>
 
           {/* Search */}
@@ -485,7 +717,7 @@ export default function DashboardClient({ username }: { username: string }) {
               {cnt > 0 && <> · <span style={{ fontWeight: 500, color: '#111' }}>{cnt} selected</span></>}
             </p>
             {cnt > 0 && (
-              <button onClick={() => setSelected(new Map())}
+              <button onClick={() => setConfirmClearAll(true)}
                 style={{ fontSize: '12.5px', color: '#a0a0a0', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'Outfit, sans-serif', textDecoration: 'underline', textDecorationStyle: 'dotted' }}
                 onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = '#dc2626'}
                 onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = '#a0a0a0'}>
@@ -535,7 +767,17 @@ export default function DashboardClient({ username }: { username: string }) {
                                       {clause.title}
                                     </span>
                                     {clause.variant && VARIANT_COLOR[clause.variant] && (
-                                      <span className="tag" style={{ color: VARIANT_COLOR[clause.variant], borderColor: VARIANT_COLOR[clause.variant] + '30', background: VARIANT_COLOR[clause.variant] + '0e' }}>
+                                      <span className="tag" style={{
+                                        color: VARIANT_COLOR[clause.variant],
+                                        borderColor: VARIANT_COLOR[clause.variant] + '40',
+                                        background: VARIANT_COLOR[clause.variant] + '12',
+                                        fontSize: '12px', fontWeight: 600, padding: '2px 10px',
+                                      }}>
+                                        <span style={{
+                                          width: '8px', height: '8px', borderRadius: '50%', display: 'inline-block', flexShrink: 0,
+                                          background: clause.variant === 'subject' ? VARIANT_COLOR[clause.variant] : 'transparent',
+                                          border: `2px solid ${VARIANT_COLOR[clause.variant]}`,
+                                        }} />
                                         {clause.variant.charAt(0).toUpperCase() + clause.variant.slice(1)}
                                       </span>
                                     )}
@@ -554,7 +796,7 @@ export default function DashboardClient({ username }: { username: string }) {
                                     WebkitBoxOrient: 'vertical' as const,
                                     overflow: isExp ? 'visible' : 'hidden',
                                   }}>
-                                    {clause.text}
+                                    {globalAgentName ? clause.text.replace(/Judit Hernadi/g, globalAgentName) : clause.text}
                                   </p>
                                   {clause.text.length > 150 && (
                                     <button onClick={e => { e.stopPropagation(); setExpanded(isExp ? null : clause.id); }}
@@ -688,6 +930,29 @@ export default function DashboardClient({ username }: { username: string }) {
         <div style={{ padding: '14px 18px', borderBottom: '1px solid #e8e8e6' }}>
           <p style={{ fontSize: '11px', fontWeight: 600, color: '#a0a0a0', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '10px' }}>To-Do</p>
 
+          {/* Conflict warning */}
+          {conflicts.length > 0 && (
+            <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '8px', padding: '10px 12px', marginBottom: '10px' }}>
+              <p style={{ fontSize: '12px', fontWeight: 600, color: '#9a3412', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ flexShrink: 0 }}>
+                  <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                Subject/Waiver conflict{conflicts.length > 1 ? 's' : ''}
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                {conflicts.map((c, i) => (
+                  <p key={i} style={{ fontSize: '11.5px', color: '#7c2d12', lineHeight: 1.35 }}>
+                    Both <strong>{c.subjectTitle.replace(/\s*\(.*?\)\s*/g, '').trim()}</strong> (Subject) and its Waiver are selected
+                  </p>
+                ))}
+              </div>
+              <p style={{ fontSize: '11px', color: '#c2410c', marginTop: '7px', fontStyle: 'italic' }}>
+                Having both a subject and its waiver is contradictory. Consider removing one.
+              </p>
+            </div>
+          )}
+
           {/* Missing fields warning */}
           {cnt > 0 && missingFields.length > 0 && (
             <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '10px 12px', marginBottom: '10px' }}>
@@ -743,7 +1008,7 @@ export default function DashboardClient({ username }: { username: string }) {
             </div>
           ) : (
             <div style={{ padding: '4px 18px 8px' }}>
-              {Array.from(selected.values()).map(entry => {
+              {Array.from(selected.values()).sort((a, b) => (CLAUSE_ORDER[a.clause.id] ?? 999) - (CLAUSE_ORDER[b.clause.id] ?? 999)).map(entry => {
                 const allFilled = entry.clause.fields.length === 0 || entry.clause.fields.every(f => {
                   const key = `${entry.clause.id}::${f.blankIndex}`;
                   if (f.type === 'date') return !!(entry.fieldValues[f.blankIndex] || globalDate);
@@ -799,7 +1064,7 @@ export default function DashboardClient({ username }: { username: string }) {
                   </div>
                 );
               })}
-              <button onClick={() => setSelected(new Map())}
+              <button onClick={() => setConfirmClearAll(true)}
                 style={{ fontSize: '12px', color: '#c8c8c8', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'Outfit,sans-serif', padding: '8px 0', textDecoration: 'underline', textDecorationStyle: 'dotted' }}
                 onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = '#dc2626'}
                 onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = '#c8c8c8'}>
@@ -884,6 +1149,167 @@ export default function DashboardClient({ username }: { username: string }) {
                 onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#b91c1c'}
                 onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = '#dc2626'}>
                 {Icon.x} Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════ CLEAR ALL CONFIRMATION MODAL ══════════════════ */}
+      {confirmClearAll && (
+        <div
+          onClick={() => setConfirmClearAll(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 999,
+            background: 'rgba(0,0,0,0.25)', backdropFilter: 'blur(3px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            animation: 'fadeIn 0.12s ease',
+          }}>
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff', borderRadius: '14px', padding: '28px 30px 24px',
+              width: '100%', maxWidth: '380px',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.06)',
+              animation: 'modalUp 0.15s ease',
+            }}>
+            <div style={{
+              width: '44px', height: '44px', borderRadius: '50%',
+              background: '#fef2f2', border: '1px solid #fecaca',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              marginBottom: '16px',
+            }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </div>
+            <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#111', marginBottom: '6px', lineHeight: 1.3 }}>
+              Remove all clauses?
+            </h3>
+            <p style={{ fontSize: '13.5px', color: '#6b6b6b', lineHeight: 1.5, marginBottom: '22px' }}>
+              All <strong style={{ color: '#3d3d3d' }}>{cnt} selected clause{cnt !== 1 ? 's' : ''}</strong> and their filled-in values will be permanently removed.
+            </p>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setConfirmClearAll(false)} className="btn-ghost"
+                style={{ padding: '8px 18px', fontSize: '13px' }}>
+                Cancel
+              </button>
+              <button onClick={doClearAll}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '6px',
+                  padding: '8px 18px', borderRadius: '8px', border: 'none',
+                  background: '#dc2626', color: '#fff',
+                  fontFamily: 'Outfit, sans-serif', fontSize: '13px', fontWeight: 600,
+                  cursor: 'pointer', transition: 'background 0.12s',
+                }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#b91c1c'}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = '#dc2626'}>
+                {Icon.x} Remove All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════ LOAD PRESET CONFIRMATION MODAL ══════════════════ */}
+      {confirmLoadPreset && (
+        <div
+          onClick={() => setConfirmLoadPreset(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 999,
+            background: 'rgba(0,0,0,0.25)', backdropFilter: 'blur(3px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            animation: 'fadeIn 0.12s ease',
+          }}>
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff', borderRadius: '14px', padding: '28px 30px 24px',
+              width: '100%', maxWidth: '380px',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.06)',
+              animation: 'modalUp 0.15s ease',
+            }}>
+            <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#111', marginBottom: '6px', lineHeight: 1.3 }}>
+              Load preset?
+            </h3>
+            <p style={{ fontSize: '13.5px', color: '#6b6b6b', lineHeight: 1.5, marginBottom: '22px' }}>
+              Loading <strong style={{ color: '#3d3d3d' }}>{confirmLoadPreset.name}</strong> will replace your current {cnt} selected clause{cnt !== 1 ? 's' : ''}. Any filled-in values will be lost.
+            </p>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setConfirmLoadPreset(null)} className="btn-ghost"
+                style={{ padding: '8px 18px', fontSize: '13px' }}>
+                Cancel
+              </button>
+              <button onClick={() => loadPreset(confirmLoadPreset.clauseIds)}
+                className="btn-dark" style={{ padding: '8px 18px', fontSize: '13px' }}>
+                Load Preset
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════ CONFLICT PROMPT MODAL ══════════════════ */}
+      {conflictPrompt && (
+        <div
+          onClick={() => setConflictPrompt(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 999,
+            background: 'rgba(0,0,0,0.25)', backdropFilter: 'blur(3px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            animation: 'fadeIn 0.12s ease',
+          }}>
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff', borderRadius: '14px', padding: '28px 30px 24px',
+              width: '100%', maxWidth: '420px',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.06)',
+              animation: 'modalUp 0.15s ease',
+            }}>
+            <div style={{
+              width: '44px', height: '44px', borderRadius: '50%',
+              background: '#fff7ed', border: '1px solid #fed7aa',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              marginBottom: '16px',
+            }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ea580c" strokeWidth="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </div>
+            <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#111', marginBottom: '6px', lineHeight: 1.3 }}>
+              Subject/Waiver conflict
+            </h3>
+            <p style={{ fontSize: '13.5px', color: '#6b6b6b', lineHeight: 1.5, marginBottom: '22px' }}>
+              You already have <strong style={{ color: '#3d3d3d' }}>{titleMap[conflictPrompt.existingId]?.replace(/\s*\(.*?\)\s*/g, '').trim()}</strong> ({clauseMap[conflictPrompt.existingId]?.variant}). Adding <strong style={{ color: '#3d3d3d' }}>{conflictPrompt.incoming.title.replace(/\s*\(.*?\)\s*/g, '').trim()}</strong> ({conflictPrompt.incoming.variant}) creates a legal contradiction.
+            </p>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <button onClick={() => setConflictPrompt(null)} className="btn-ghost"
+                style={{ padding: '8px 14px', fontSize: '13px' }}>
+                Cancel
+              </button>
+              <button onClick={() => {
+                // Keep both
+                setSelected(prev => { const n = new Map(prev); n.set(conflictPrompt.incoming.id, { clause: conflictPrompt.incoming, fieldValues: {} }); return n; });
+                setConflictPrompt(null);
+              }} className="btn-ghost"
+                style={{ padding: '8px 14px', fontSize: '13px' }}>
+                Keep Both
+              </button>
+              <button onClick={() => {
+                // Swap: remove existing, add incoming
+                setSelected(prev => {
+                  const n = new Map(prev);
+                  n.delete(conflictPrompt.existingId);
+                  n.set(conflictPrompt.incoming.id, { clause: conflictPrompt.incoming, fieldValues: {} });
+                  return n;
+                });
+                setConflictPrompt(null);
+              }}
+                className="btn-dark" style={{ padding: '8px 14px', fontSize: '13px' }}>
+                Swap
               </button>
             </div>
           </div>

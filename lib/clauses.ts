@@ -202,3 +202,44 @@ export const CLAUSES: Clause[] = [
   { id: "ADDL_ASBESTOS", category: "TERMS", title: "ASBESTOS", text: "The Buyer is aware that the home was constructed before 1990 and may contain asbestos-containing building materials. The buyer is aware that a Hazardous Materials Survey should be completed before any renovation or demolition.", hasDate: false, hasAmount: false, section: "ADDITIONAL CLAUSES", variant: "term", fields: [] },
   { id: "ADDL_OIL_TANK", category: "TERMS", title: "UNDERGROUND OIL TANK", text: "The Buyer is aware that this home was constructed prior to 1971 during which time fuel oil was commonly stored in underground Oil Storage Tanks (OST). It is recommended that the Buyer obtain a written magnetic subsurface survey report from an Underground Storage Tank specialist stating that an underground oil tank is not present on the property.", hasDate: false, hasAmount: false, section: "ADDITIONAL CLAUSES", variant: "term", fields: [] },
 ];
+
+/** Canonical order: maps clause ID → index in CLAUSES array (document order) */
+export const CLAUSE_ORDER: Record<string, number> = Object.fromEntries(
+  CLAUSES.map((c, i) => [c.id, i])
+);
+
+/** Built-in preset definitions (clause IDs only) */
+export const BUILT_IN_PRESETS = [
+  {
+    id: '__builtin_sfh',
+    name: 'Standard SFH Purchase',
+    clauseIds: [
+      'SF_SUB_01', 'SF_SUB_02', 'SF_SUB_03', 'SF_SUB_04', 'SF_SUB_05', 'SF_SUB_06',
+      'SF_TERM_LEGAL', 'SF_TERM_NO_APPL', 'SF_TERM_MANUALS', 'SF_TERM_DEPOSIT',
+      'SF_TERM_FIREPLACES', 'SF_TERM_DIMENSIONS', 'SF_TERM_LATENT',
+    ],
+    builtIn: true,
+  },
+  {
+    id: '__builtin_strata',
+    name: 'Strata Purchase',
+    clauseIds: [
+      'STRATA_SUB_01', 'STRATA_SUB_02', 'STRATA_SUB_03', 'STRATA_SUB_04',
+      'STRATA_SUB_05', 'STRATA_SUB_06', 'STRATA_SUB_INS',
+      'STRATA_TERM_LEGAL', 'STRATA_TERM_NO_APPL', 'STRATA_TERM_MANUALS',
+      'STRATA_TERM_DEPOSIT', 'STRATA_TERM_DIMENSIONS', 'STRATA_TERM_LATENT',
+    ],
+    builtIn: true,
+  },
+  {
+    id: '__builtin_rural',
+    name: 'Rural Purchase',
+    clauseIds: [
+      'SF_SUB_01', 'SF_SUB_02', 'SF_SUB_03', 'SF_SUB_04', 'SF_SUB_05', 'SF_SUB_06',
+      'RURAL_SUB_SEPTIC', 'RURAL_SUB_WATER', 'RURAL_SUB_ALR',
+      'SF_TERM_LEGAL', 'SF_TERM_NO_APPL', 'SF_TERM_MANUALS', 'SF_TERM_DEPOSIT',
+      'SF_TERM_FIREPLACES', 'SF_TERM_DIMENSIONS', 'SF_TERM_LATENT',
+    ],
+    builtIn: true,
+  },
+] as const;
