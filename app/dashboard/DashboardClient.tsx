@@ -146,7 +146,16 @@ export default function DashboardClient({ username }: { username: string }) {
   ).length;
 
   const toggle = useCallback((c: Clause) => {
-    setSelected(prev => { const n = new Map(prev); n.has(c.id) ? n.delete(c.id) : n.set(c.id, { clause: c, fieldValues: {} }); return n; });
+    setSelected(prev => {
+      const n = new Map(prev);
+      if (n.has(c.id)) {
+        if (!window.confirm(`Remove "${c.title.replace(/\s*\(.*?\)\s*/g, '').trim()}" from your selection?`)) return prev;
+        n.delete(c.id);
+      } else {
+        n.set(c.id, { clause: c, fieldValues: {} });
+      }
+      return n;
+    });
   }, []);
 
   const setField = useCallback((id: string, idx: number, val: string) => {
