@@ -430,6 +430,7 @@ export default function DashboardClient({ username }: { username: string }) {
                   <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontWeight: 700, color: globalAmount ? '#111' : '#a0a0a0', pointerEvents: 'none', fontSize: '14px' }}>$</span>
                   <input type="number" min="0" step="1000" value={globalAmount}
                     onChange={e => setGlobalAmount(e.target.value)}
+                    onWheel={e => (e.target as HTMLElement).blur()}
                     placeholder="0" className="finput"
                     style={{ paddingLeft: '22px', fontWeight: globalAmount ? 600 : 400, borderColor: globalAmount ? '#111' : '#86efac', fontSize: '13.5px', background: globalAmount ? '#fff' : '#f0fdf4' }}
                   />
@@ -635,6 +636,7 @@ export default function DashboardClient({ username }: { username: string }) {
                                                     if (!isAmtOverridden && globalAmount) setAmountOverride(clause.id, field.blankIndex, true);
                                                     setField(clause.id, field.blankIndex, e.target.value);
                                                   }}
+                                                  onWheel={e => (e.target as HTMLElement).blur()}
                                                   placeholder="0" className="finput"
                                                   style={{ paddingLeft: '22px', borderColor: val ? '#111' : '#e8e8e6', background: val ? '#fff' : '#fafafa' }}
                                                 />
