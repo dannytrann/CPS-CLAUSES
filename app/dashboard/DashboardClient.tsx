@@ -111,6 +111,7 @@ export default function DashboardClient({ username }: { username: string }) {
   const [dateOverrides, setDateOverrides] = useState<Overrides>(new Set());
   const [globalAmount, setGlobalAmount] = useState('');
   const [amountOverrides, setAmountOverrides] = useState<Overrides>(new Set());
+  const [confirmRemove, setConfirmRemove] = useState<Clause | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
 
   const displayName = username.charAt(0).toUpperCase() + username.slice(1);
@@ -147,12 +148,17 @@ export default function DashboardClient({ username }: { username: string }) {
 
   const toggle = useCallback((c: Clause) => {
     if (selected.has(c.id)) {
-      if (!window.confirm(`Remove "${c.title.replace(/\s*\(.*?\)\s*/g, '').trim()}" from your selection?`)) return;
-      setSelected(prev => { const n = new Map(prev); n.delete(c.id); return n; });
+      setConfirmRemove(c);
     } else {
       setSelected(prev => { const n = new Map(prev); n.set(c.id, { clause: c, fieldValues: {} }); return n; });
     }
   }, [selected]);
+
+  const doRemove = useCallback(() => {
+    if (!confirmRemove) return;
+    setSelected(prev => { const n = new Map(prev); n.delete(confirmRemove.id); return n; });
+    setConfirmRemove(null);
+  }, [confirmRemove]);
 
   const setField = useCallback((id: string, idx: number, val: string) => {
     setSelected(prev => {
@@ -820,6 +826,69 @@ export default function DashboardClient({ username }: { username: string }) {
           )}
         </div>
       </aside>
+
+      {/* ══════════════════ REMOVE CONFIRMATION MODAL ══════════════════ */}
+      {confirmRemove && (
+        <div
+          onClick={() => setConfirmRemove(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 999,
+            background: 'rgba(0,0,0,0.25)', backdropFilter: 'blur(3px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            animation: 'fadeIn 0.12s ease',
+          }}>
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff', borderRadius: '14px', padding: '28px 30px 24px',
+              width: '100%', maxWidth: '380px',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.06)',
+              animation: 'modalUp 0.15s ease',
+            }}>
+            {/* Warning icon */}
+            <div style={{
+              width: '44px', height: '44px', borderRadius: '50%',
+              background: '#fef2f2', border: '1px solid #fecaca',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              marginBottom: '16px',
+            }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </div>
+
+            <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#111', marginBottom: '6px', lineHeight: 1.3 }}>
+              Remove clause?
+            </h3>
+            <p style={{ fontSize: '13.5px', color: '#6b6b6b', lineHeight: 1.5, marginBottom: '22px' }}>
+              <strong style={{ color: '#3d3d3d' }}>{confirmRemove.title.replace(/\s*\(.*?\)\s*/g, '').trim()}</strong> will be removed from your selection. Any filled-in values will be lost.
+            </p>
+
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setConfirmRemove(null)}
+                className="btn-ghost"
+                style={{ padding: '8px 18px', fontSize: '13px' }}>
+                Cancel
+              </button>
+              <button
+                onClick={doRemove}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '6px',
+                  padding: '8px 18px', borderRadius: '8px', border: 'none',
+                  background: '#dc2626', color: '#fff',
+                  fontFamily: 'Outfit, sans-serif', fontSize: '13px', fontWeight: 600,
+                  cursor: 'pointer', transition: 'background 0.12s',
+                }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#b91c1c'}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = '#dc2626'}>
+                {Icon.x} Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
