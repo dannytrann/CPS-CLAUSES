@@ -85,22 +85,22 @@ const Icon = {
 function NavItem({ icon, label, active, onClick, count }: { icon: React.ReactNode; label: string; active: boolean; onClick: () => void; count?: number }) {
   return (
     <button onClick={onClick} style={{
-      display: 'flex', alignItems: 'center', gap: '9px',
-      width: '100%', padding: '7px 10px', borderRadius: '7px',
+      display: 'flex', alignItems: 'center', gap: '10px',
+      width: '100%', padding: '8px 11px', borderRadius: '8px',
       background: active ? '#f0f0ee' : 'transparent',
       border: 'none', cursor: 'pointer',
       color: active ? '#111' : '#6b6b6b',
-      fontSize: '13.5px', fontWeight: active ? 500 : 400,
+      fontSize: '13.5px', fontWeight: active ? 600 : 400,
       fontFamily: 'Outfit, sans-serif',
       textAlign: 'left',
-      transition: 'background 0.1s, color 0.1s',
+      transition: 'all 0.15s',
     }}
     onMouseEnter={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = '#f8f8f6'; (e.currentTarget as HTMLElement).style.color = '#111'; } }}
     onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = '#6b6b6b'; } }}
     >
-      <span style={{ color: active ? '#3d3d3d' : '#a0a0a0', display: 'flex', alignItems: 'center' }}>{icon}</span>
-      <span style={{ flex: 1 }}>{label}</span>
-      {count !== undefined && <span style={{ fontSize: '11px', color: '#a0a0a0' }}>{count}</span>}
+      <span style={{ color: active ? '#3d3d3d' : '#a0a0a0', display: 'flex', alignItems: 'center', transition: 'color 0.15s' }}>{icon}</span>
+      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+      {count !== undefined && <span style={{ fontSize: '11px', color: '#c8c8c8', fontWeight: 400 }}>{count}</span>}
     </button>
   );
 }
@@ -133,6 +133,8 @@ export default function DashboardClient({ username }: { username: string }) {
   const [confirmLoadPreset, setConfirmLoadPreset] = useState<{ name: string; clauseIds: string[] } | null>(null);
   const [conflictPrompt, setConflictPrompt] = useState<{ incoming: Clause; existingId: string } | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -394,53 +396,58 @@ export default function DashboardClient({ username }: { username: string }) {
   const catShort = (c: string) => c.replace(' TERMS', '').replace('SUBJECTS/CONDITIONS', 'Subjects').replace('MANUFACTURED HOME PARK', 'MHP').replace('NEW CONSTRUCTION', 'New Const.').replace('INCLUSIONS','Inclusions').replace('EXCLUSIONS','Exclusions').replace('DEPOSIT','Deposit');
 
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: '#f0f0ee' }}>
+    <div className="dash-layout">
+
+      {/* Mobile overlay */}
+      <div className={`mobile-overlay ${sidebarOpen ? 'show' : ''}`} onClick={() => setSidebarOpen(false)} />
 
       {/* ══════════════════ SIDEBAR ══════════════════ */}
-      <aside style={{
-        width: '200px', flexShrink: 0,
-        background: '#fff', borderRight: '1px solid #e8e8e6',
-        display: 'flex', flexDirection: 'column', overflowY: 'auto',
-      }}>
+      <aside className={`dash-sidebar ${sidebarOpen ? 'sidebar-open' : ''}`}>
         {/* Logo */}
-        <div style={{ padding: '16px 14px 12px', borderBottom: '1px solid #e8e8e6', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <div style={{ width: '24px', height: '24px', background: '#111', borderRadius: '5px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
+        <div style={{ padding: '18px 16px 14px', borderBottom: '1px solid #e8e8e6', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ width: '28px', height: '28px', background: '#111', borderRadius: '7px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
               <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
               <polyline points="14 2 14 8 20 8"/>
             </svg>
           </div>
-          <span style={{ fontSize: '13px', fontWeight: 700, letterSpacing: '0.1em', color: '#111', textTransform: 'uppercase' }}>CPS Clauses</span>
+          <span style={{ fontSize: '13.5px', fontWeight: 700, letterSpacing: '0.1em', color: '#111', textTransform: 'uppercase' }}>CPS Clauses</span>
+          {/* Mobile close button */}
+          <button onClick={() => setSidebarOpen(false)}
+            style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#a0a0a0', display: 'none', padding: '4px' }}
+            className="mobile-sidebar-close">
+            {Icon.x}
+          </button>
         </div>
 
         {/* Nav */}
-        <nav style={{ padding: '10px 8px', flex: 1 }}>
+        <nav style={{ padding: '10px 10px', flex: 1 }}>
           <NavItem icon={Icon.home} label="All Clauses" active={activeSection === 'ALL' && activeCategory === 'ALL'}
-            onClick={() => { setActiveSection('ALL'); setActiveCategory('ALL'); }} />
+            onClick={() => { setActiveSection('ALL'); setActiveCategory('ALL'); setSidebarOpen(false); }} />
 
           {/* Templates */}
-          <p style={{ fontSize: '10px', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#a0a0a0', padding: '16px 10px 4px', display: 'block' }}>Templates</p>
+          <p style={{ fontSize: '10px', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#a0a0a0', padding: '18px 10px 6px', display: 'block' }}>Templates</p>
           {SECTIONS.map(s => (
             <NavItem key={s} icon={Icon.file} label={sectionShort(s)}
               active={activeSection === s && activeCategory === 'ALL'}
-              onClick={() => { setActiveSection(s); setActiveCategory('ALL'); }}
+              onClick={() => { setActiveSection(s); setActiveCategory('ALL'); setSidebarOpen(false); }}
               count={CLAUSES.filter(c => c.section === s).length}
             />
           ))}
 
           {/* Categories */}
-          <p style={{ fontSize: '10px', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#a0a0a0', padding: '16px 10px 4px', display: 'block' }}>Categories</p>
+          <p style={{ fontSize: '10px', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#a0a0a0', padding: '18px 10px 6px', display: 'block' }}>Categories</p>
           {CATEGORIES.map(cat => (
-            <NavItem key={cat} icon={<span style={{ width: '8px', height: '8px', borderRadius: '2px', background: CAT_ACCENT[cat] || '#888', display: 'inline-block', flexShrink: 0 }} />}
+            <NavItem key={cat} icon={<span style={{ width: '8px', height: '8px', borderRadius: '3px', background: CAT_ACCENT[cat] || '#888', display: 'inline-block', flexShrink: 0 }} />}
               label={catShort(cat)}
               active={activeCategory === cat}
-              onClick={() => { setActiveCategory(cat); setActiveSection('ALL'); }}
+              onClick={() => { setActiveCategory(cat); setActiveSection('ALL'); setSidebarOpen(false); }}
               count={CLAUSES.filter(c => c.category === cat).length}
             />
           ))}
 
           {/* My Presets */}
-          <p style={{ fontSize: '10px', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#a0a0a0', padding: '16px 10px 4px', display: 'block' }}>Presets</p>
+          <p style={{ fontSize: '10px', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#a0a0a0', padding: '18px 10px 6px', display: 'block' }}>Presets</p>
           {BUILT_IN_PRESETS.map(p => (
             <button key={p.id} onClick={() => handleLoadPreset(p.name, [...p.clauseIds])}
               style={{
@@ -525,41 +532,74 @@ export default function DashboardClient({ username }: { username: string }) {
         </nav>
 
         {/* User */}
-        <div style={{ padding: '10px 10px', borderTop: '1px solid #e8e8e6', display: 'flex', alignItems: 'center', gap: '9px' }}>
-          <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: '#111', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <span style={{ fontSize: '12px', fontWeight: 700, color: '#fff', textTransform: 'uppercase' }}>{username[0]}</span>
+        <div style={{ padding: '12px 12px', borderTop: '1px solid #e8e8e6', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(135deg, #111 0%, #333 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <span style={{ fontSize: '12.5px', fontWeight: 700, color: '#fff', textTransform: 'uppercase' }}>{username[0]}</span>
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ fontSize: '13px', fontWeight: 500, color: '#111', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</p>
+            <p style={{ fontSize: '13px', fontWeight: 600, color: '#111', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</p>
             <p style={{ fontSize: '11px', color: '#a0a0a0' }}>{globalBrokerage || 'Set brokerage'}</p>
           </div>
           <button onClick={logout} title="Sign out"
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c8c8c8', display: 'flex', padding: '3px' }}
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = '#111'}
-            onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = '#c8c8c8'}>
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c8c8c8', display: 'flex', padding: '4px', borderRadius: '6px', transition: 'all 0.15s' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#dc2626'; (e.currentTarget as HTMLElement).style.background = '#fef2f2'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#c8c8c8'; (e.currentTarget as HTMLElement).style.background = 'none'; }}>
             {Icon.logout}
           </button>
         </div>
       </aside>
 
       {/* ══════════════════ CENTRE ══════════════════ */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+      <div className="dash-centre">
 
-        {/* Top bar */}
-        <div style={{ height: '48px', background: '#fff', borderBottom: '1px solid #e8e8e6', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 22px', flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '13px', color: '#a0a0a0' }}>
+        {/* Mobile top bar */}
+        <div className="mobile-topbar">
+          <button onClick={() => setSidebarOpen(true)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#111', display: 'flex', padding: '4px' }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div style={{ width: '22px', height: '22px', background: '#111', borderRadius: '5px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            </div>
+            <span style={{ fontSize: '13px', fontWeight: 700, letterSpacing: '0.08em', color: '#111', textTransform: 'uppercase' }}>CPS</span>
+          </div>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {cnt > 0 && (
+              <button onClick={() => setPanelOpen(true)} className="mobile-panel-toggle"
+                style={{ background: '#111', color: '#fff', border: 'none', cursor: 'pointer', borderRadius: '20px', padding: '5px 12px', fontSize: '12px', fontWeight: 600, fontFamily: 'Outfit,sans-serif', alignItems: 'center', gap: '4px' }}>
+                {Icon.copy} {cnt}
+              </button>
+            )}
+            <button onClick={copy} disabled={cnt === 0} className={`btn-dark ${copyOk ? 'copied' : ''}`}
+              style={{ padding: '6px 12px', fontSize: '12px' }}>
+              {copyOk ? <>{Icon.checkGr} Copied!</> : <>{Icon.copy} Copy</>}
+            </button>
+          </div>
+        </div>
+
+        {/* Desktop Top bar */}
+        <div style={{ height: '50px', background: '#fff', borderBottom: '1px solid #e8e8e6', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', flexShrink: 0 }}
+          className="desktop-topbar">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#a0a0a0' }}>
             <span>Home</span>
             {(activeSection !== 'ALL' || activeCategory !== 'ALL') && (
-              <><span>›</span><span style={{ color: '#3d3d3d' }}>{activeCategory !== 'ALL' ? catShort(activeCategory) : sectionShort(activeSection)}</span></>
+              <><span style={{ color: '#d4d4d2' }}>/</span><span style={{ color: '#3d3d3d', fontWeight: 500 }}>{activeCategory !== 'ALL' ? catShort(activeCategory) : sectionShort(activeSection)}</span></>
             )}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             {cnt > 0 && missingFields.length > 0 && (
               <span style={{ fontSize: '12px', color: '#d97706', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                 {missingFields.length} empty
               </span>
             )}
+            <button onClick={() => setPanelOpen(p => !p)} className="mobile-panel-toggle"
+              style={{ background: 'none', border: '1px solid #e8e8e6', cursor: 'pointer', borderRadius: '8px', padding: '6px 12px', fontSize: '12px', fontWeight: 500, fontFamily: 'Outfit,sans-serif', color: '#6b6b6b', alignItems: 'center', gap: '5px', transition: 'all 0.15s' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#111'; (e.currentTarget as HTMLElement).style.color = '#111'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = '#e8e8e6'; (e.currentTarget as HTMLElement).style.color = '#6b6b6b'; }}>
+              {Icon.list} Selected {cnt > 0 && `(${cnt})`}
+            </button>
             <button onClick={copy} disabled={cnt === 0} className={`btn-dark ${copyOk ? 'copied' : ''}`}>
               {copyOk ? <>{Icon.checkGr} Copied!</> : <>{Icon.copy} {cnt > 0 ? `Copy (${cnt})` : 'Copy'}</>}
             </button>
@@ -567,16 +607,16 @@ export default function DashboardClient({ username }: { username: string }) {
         </div>
 
         {/* Scrollable content */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '26px 24px 40px' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '28px 28px 48px' }}>
 
           {/* Greeting */}
-          <h1 style={{ fontSize: '28px', fontWeight: 600, color: '#111', marginBottom: '20px', lineHeight: 1.25 }}>
+          <h1 style={{ fontSize: '28px', fontWeight: 600, color: '#111', marginBottom: '24px', lineHeight: 1.25 }}>
             {hour()},{' '}
             <span className="serif-italic" style={{ fontSize: '30px', fontWeight: 400 }}>{displayName}</span>
           </h1>
 
-          {/* Stat cards — 4 across, identical to reference */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '24px' }}>
+          {/* Stat cards */}
+          <div className="stat-grid">
             {[
               { label: 'Selected',  value: cnt,        accent: '#111111' },
               { label: 'Subjects',  value: subjectCnt, accent: '#c8d400' },
@@ -584,23 +624,20 @@ export default function DashboardClient({ username }: { username: string }) {
               { label: 'To Fill',   value: toFillCnt,  accent: '#e8643c' },
             ].map(({ label, value, accent }) => (
               <div key={label} className="stat-card">
-                <p style={{ fontSize: '12px', color: '#a0a0a0', fontWeight: 500, marginBottom: '10px' }}>{label}</p>
-                <p style={{ fontSize: '34px', fontWeight: 600, color: '#111', lineHeight: 1, marginBottom: '16px' }}>{value}</p>
-                <div style={{ height: '3px', background: accent, margin: '0 -18px' }} />
+                <p style={{ fontSize: '11.5px', color: '#a0a0a0', fontWeight: 500, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</p>
+                <p style={{ fontSize: '36px', fontWeight: 600, color: '#111', lineHeight: 1, marginBottom: '18px' }}>{value}</p>
+                <div style={{ height: '4px', background: accent, margin: '0 -20px', borderRadius: '2px 2px 0 0' }} />
               </div>
             ))}
           </div>
 
           {/* ── Global banners row ── */}
-          <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
+          <div className="globals-row">
 
             {/* Global Subject Date */}
-            <div style={{
-              flex: '1 1 280px', minWidth: '260px',
+            <div className="global-field" style={{
               background: globalDate ? '#fff' : '#fffbeb',
               border: `1px solid ${globalDate ? '#e8e8e6' : '#fde68a'}`,
-              borderRadius: '10px', padding: '12px 16px',
-              display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                 <span style={{ fontSize: '17px', lineHeight: 1 }}>📅</span>
@@ -629,12 +666,9 @@ export default function DashboardClient({ username }: { username: string }) {
             </div>
 
             {/* Global Default Amount */}
-            <div style={{
-              flex: '1 1 260px', minWidth: '240px',
+            <div className="global-field" style={{
               background: globalAmount ? '#fff' : '#f0fdf4',
               border: `1px solid ${globalAmount ? '#e8e8e6' : '#bbf7d0'}`,
-              borderRadius: '10px', padding: '12px 16px',
-              display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                 <span style={{ fontSize: '17px', lineHeight: 1 }}>💰</span>
@@ -668,12 +702,9 @@ export default function DashboardClient({ username }: { username: string }) {
             </div>
 
             {/* Global Agent Name */}
-            <div style={{
-              flex: '1 1 280px', minWidth: '260px',
+            <div className="global-field" style={{
               background: globalAgentName ? '#fff' : '#f5f3ff',
               border: `1px solid ${globalAgentName ? '#e8e8e6' : '#ddd6fe'}`,
-              borderRadius: '10px', padding: '12px 16px',
-              display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                 <span style={{ fontSize: '17px', lineHeight: 1 }}>👤</span>
@@ -708,12 +739,9 @@ export default function DashboardClient({ username }: { username: string }) {
             </div>
 
             {/* Global Brokerage Name */}
-            <div style={{
-              flex: '1 1 280px', minWidth: '260px',
+            <div className="global-field" style={{
               background: globalBrokerage ? '#fff' : '#f0f9ff',
               border: `1px solid ${globalBrokerage ? '#e8e8e6' : '#bae6fd'}`,
-              borderRadius: '10px', padding: '12px 16px',
-              display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                 <span style={{ fontSize: '17px', lineHeight: 1 }}>🏢</span>
@@ -744,7 +772,7 @@ export default function DashboardClient({ username }: { username: string }) {
           </div>
 
           {/* Search */}
-          <div style={{ position: 'relative', maxWidth: '480px', marginBottom: '20px' }}>
+          <div style={{ position: 'relative', maxWidth: '520px', marginBottom: '22px' }}>
             <span style={{ position: 'absolute', left: '11px', top: '50%', transform: 'translateY(-50%)', color: '#a0a0a0', display: 'flex' }}>{Icon.search}</span>
             <input type="text" value={search} onChange={e => setSearch(e.target.value)}
               placeholder="Search clauses…"
@@ -983,10 +1011,19 @@ export default function DashboardClient({ username }: { username: string }) {
       </div>
 
       {/* ══════════════════ RIGHT PANEL ══════════════════ */}
-      <aside style={{ width: '300px', flexShrink: 0, background: '#fff', borderLeft: '1px solid #e8e8e6', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {panelOpen && <div className="mobile-overlay show" onClick={() => setPanelOpen(false)} style={{ zIndex: 25 }} />}
+      <aside className={`dash-panel ${panelOpen ? 'panel-open' : ''}`}>
         {/* Header */}
         <div style={{ padding: '14px 18px', borderBottom: '1px solid #e8e8e6' }}>
-          <p style={{ fontSize: '11px', fontWeight: 600, color: '#a0a0a0', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '10px' }}>To-Do</p>
+          {/* Mobile close for panel */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <p style={{ fontSize: '11px', fontWeight: 600, color: '#a0a0a0', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Selected Clauses</p>
+            <button onClick={() => setPanelOpen(false)} className="mobile-panel-toggle"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#a0a0a0', padding: '2px', alignItems: 'center' }}>
+              {Icon.x}
+            </button>
+          </div>
+          {/* To-Do items */}
 
           {/* Conflict warning */}
           {conflicts.length > 0 && (
