@@ -37,7 +37,7 @@ function formatAmt(raw: string) {
   const n = parseFloat(raw);
   return isNaN(n) ? raw : n.toLocaleString('en-CA');
 }
-function fillText(clause: Clause, fv: FieldValues, globalDate: string, dateOverrides: Overrides, globalAmount: string, amountOverrides: Overrides, agentName: string) {
+function fillText(clause: Clause, fv: FieldValues, globalDate: string, dateOverrides: Overrides, globalAmount: string, amountOverrides: Overrides, agentName: string, brokerageName: string) {
   let i = 0;
   let result = clause.text.replace(/_{3,}/g, () => {
     const f = clause.fields[i];
@@ -52,9 +52,14 @@ function fillText(clause: Clause, fv: FieldValues, globalDate: string, dateOverr
       const effective = (amountOverrides.has(key) ? v : null) ?? (v || globalAmount);
       return effective ? formatAmt(effective) : '___________';
     }
+    if (f?.type === 'agent_name') {
+      return v || agentName || '___________';
+    }
+    if (f?.type === 'brokerage') {
+      return v || brokerageName || '___________';
+    }
     return v || '___________';
   });
-  result = result.replace(/Judit Hernadi/g, agentName || '___________');
   return result;
 }
 
@@ -114,6 +119,10 @@ export default function DashboardClient({ username }: { username: string }) {
   const [amountOverrides, setAmountOverrides] = useState<Overrides>(new Set());
   const [globalAgentName, setGlobalAgentName] = useState(() => {
     if (typeof window !== 'undefined') return localStorage.getItem('agentName') || '';
+    return '';
+  });
+  const [globalBrokerage, setGlobalBrokerage] = useState(() => {
+    if (typeof window !== 'undefined') return localStorage.getItem('brokerageName') || '';
     return '';
   });
   const [confirmRemove, setConfirmRemove] = useState<Clause | null>(null);
@@ -197,6 +206,8 @@ export default function DashboardClient({ username }: { username: string }) {
       const key = `${e.clause.id}::${f.blankIndex}`;
       if (f.type === 'date') return !(globalDate || (dateOverrides.has(key) && e.fieldValues[f.blankIndex]));
       if (f.type === 'amount') return !(globalAmount || (amountOverrides.has(key) && e.fieldValues[f.blankIndex]));
+      if (f.type === 'agent_name') return !(globalAgentName || e.fieldValues[f.blankIndex]);
+      if (f.type === 'brokerage') return !(globalBrokerage || e.fieldValues[f.blankIndex]);
       return !e.fieldValues[f.blankIndex];
     })
   ).length;
@@ -289,15 +300,15 @@ export default function DashboardClient({ username }: { username: string }) {
     subj.sort(byOrder);
     terms.sort(byOrder);
     subj.forEach((e, i) => {
-      lines.push(`${i+1}. ${e.clause.title.replace(/\s*\(.*?\)\s*/g,'').trim()}: ${fillText(e.clause, e.fieldValues, globalDate, dateOverrides, globalAmount, amountOverrides, globalAgentName)}`);
+      lines.push(`${i+1}. ${e.clause.title.replace(/\s*\(.*?\)\s*/g,'').trim()}: ${fillText(e.clause, e.fieldValues, globalDate, dateOverrides, globalAmount, amountOverrides, globalAgentName, globalBrokerage)}`);
       lines.push('');
     });
     if (terms.length) {
       lines.push('TERMS AND CONDITIONS:', '');
-      terms.forEach((e, i) => { lines.push(`${i+1}. ${e.clause.title.replace(/\s*\(.*?\)\s*/g,'').trim()}: ${fillText(e.clause, e.fieldValues, globalDate, dateOverrides, globalAmount, amountOverrides, globalAgentName)}`); lines.push(''); });
+      terms.forEach((e, i) => { lines.push(`${i+1}. ${e.clause.title.replace(/\s*\(.*?\)\s*/g,'').trim()}: ${fillText(e.clause, e.fieldValues, globalDate, dateOverrides, globalAmount, amountOverrides, globalAgentName, globalBrokerage)}`); lines.push(''); });
     }
     return lines.join('\n').trim();
-  }, [selected, cnt, globalDate, dateOverrides, globalAmount, amountOverrides, globalAgentName]);
+  }, [selected, cnt, globalDate, dateOverrides, globalAmount, amountOverrides, globalAgentName, globalBrokerage]);
 
   const setOverride = useCallback((clauseId: string, blankIndex: number, enable: boolean) => {
     setDateOverrides(prev => {
@@ -345,13 +356,17 @@ export default function DashboardClient({ username }: { username: string }) {
         } else if (f.type === 'amount') {
           const effective = amountOverrides.has(key) ? val : (val || globalAmount);
           if (!effective) missing.push({ clauseTitle: title, fieldLabel: f.label, fieldType: 'amount' });
+        } else if (f.type === 'agent_name') {
+          if (!val && !globalAgentName) missing.push({ clauseTitle: title, fieldLabel: f.label, fieldType: 'agent_name' });
+        } else if (f.type === 'brokerage') {
+          if (!val && !globalBrokerage) missing.push({ clauseTitle: title, fieldLabel: f.label, fieldType: 'brokerage' });
         } else {
           if (!val) missing.push({ clauseTitle: title, fieldLabel: f.label, fieldType: f.type });
         }
       }
     }
     return missing;
-  }, [selected, globalDate, dateOverrides, globalAmount, amountOverrides]);
+  }, [selected, globalDate, dateOverrides, globalAmount, amountOverrides, globalAgentName, globalBrokerage]);
 
   async function copy() {
     // Clipboard write with reliable fallback
@@ -516,7 +531,7 @@ export default function DashboardClient({ username }: { username: string }) {
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ fontSize: '13px', fontWeight: 500, color: '#111', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</p>
-            <p style={{ fontSize: '11px', color: '#a0a0a0' }}>Royal LePage</p>
+            <p style={{ fontSize: '11px', color: '#a0a0a0' }}>{globalBrokerage || 'Set brokerage'}</p>
           </div>
           <button onClick={logout} title="Sign out"
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c8c8c8', display: 'flex', padding: '3px' }}
@@ -692,6 +707,40 @@ export default function DashboardClient({ username }: { username: string }) {
               </div>
             </div>
 
+            {/* Global Brokerage Name */}
+            <div style={{
+              flex: '1 1 280px', minWidth: '260px',
+              background: globalBrokerage ? '#fff' : '#f0f9ff',
+              border: `1px solid ${globalBrokerage ? '#e8e8e6' : '#bae6fd'}`,
+              borderRadius: '10px', padding: '12px 16px',
+              display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                <span style={{ fontSize: '17px', lineHeight: 1 }}>🏢</span>
+                <div>
+                  <p style={{ fontSize: '12.5px', fontWeight: 600, color: '#111', lineHeight: 1.2 }}>Brokerage</p>
+                  <p style={{ fontSize: '11px', color: '#a0a0a0', lineHeight: 1.3 }}>Replaces brokerage in clauses</p>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1 1 180px', minWidth: '160px' }}>
+                <input type="text" value={globalBrokerage}
+                  onChange={e => { setGlobalBrokerage(e.target.value); localStorage.setItem('brokerageName', e.target.value); }}
+                  placeholder="Enter brokerage name…" className="finput"
+                  style={{ flex: 1, fontWeight: globalBrokerage ? 600 : 400, borderColor: globalBrokerage ? '#111' : '#7dd3fc', fontSize: '13.5px', background: globalBrokerage ? '#fff' : '#f0f9ff' }}
+                />
+                {globalBrokerage && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
+                    <span style={{ fontSize: '12.5px', color: '#16a34a', fontWeight: 500 }}>✓ {globalBrokerage}</span>
+                    <button onClick={() => { setGlobalBrokerage(''); localStorage.removeItem('brokerageName'); }}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#a0a0a0', display: 'flex', padding: '2px', fontSize: '11px', fontFamily: 'Outfit,sans-serif' }}
+                      title="Clear brokerage name"
+                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = '#dc2626'}
+                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = '#a0a0a0'}>✕ clear</button>
+                  </div>
+                )}
+              </div>
+            </div>
+
           </div>
 
           {/* Search */}
@@ -796,7 +845,7 @@ export default function DashboardClient({ username }: { username: string }) {
                                     WebkitBoxOrient: 'vertical' as const,
                                     overflow: isExp ? 'visible' : 'hidden',
                                   }}>
-                                    {globalAgentName ? clause.text.replace(/Judit Hernadi/g, globalAgentName) : clause.text}
+                                    {clause.text}
                                   </p>
                                   {clause.text.length > 150 && (
                                     <button onClick={e => { e.stopPropagation(); setExpanded(isExp ? null : clause.id); }}
@@ -821,19 +870,23 @@ export default function DashboardClient({ username }: { username: string }) {
                                       const val = entry?.fieldValues[field.blankIndex] || '';
                                       const isDate = field.type === 'date';
                                       const isAmt  = field.type === 'amount';
+                                      const isAgentName = field.type === 'agent_name';
+                                      const isBrokerage = field.type === 'brokerage';
                                       const overrideKey = `${clause.id}::${field.blankIndex}`;
                                       const isDateOverridden = dateOverrides.has(overrideKey);
                                       const isAmtOverridden  = amountOverrides.has(overrideKey);
                                       const effectiveDate = isDate ? (isDateOverridden ? val : (val || globalDate)) : '';
                                       const usingGlobalDate = isDate && !isDateOverridden && !val && !!globalDate;
                                       const usingGlobalAmt  = isAmt  && !isAmtOverridden  && !val && !!globalAmount;
+                                      const usingGlobalAgent = isAgentName && !val && !!globalAgentName;
+                                      const usingGlobalBrokerage = isBrokerage && !val && !!globalBrokerage;
 
                                       return (
                                         <div key={field.blankIndex}
                                           style={{ flex: isDate ? '1 1 200px' : isAmt ? '1 1 148px' : '1 1 155px', minWidth: isDate ? '190px' : '138px', maxWidth: '300px' }}>
                                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '5px' }}>
                                             <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 600, color: '#6b6b6b', letterSpacing: '0.07em', textTransform: 'uppercase' }}>
-                                              <span style={{ fontSize: '12px' }}>{isDate ? '📅' : isAmt ? '💲' : '✏️'}</span>
+                                              <span style={{ fontSize: '12px' }}>{isDate ? '📅' : isAmt ? '💲' : isAgentName ? '👤' : isBrokerage ? '🏢' : '✏️'}</span>
                                               {field.label}
                                             </label>
                                             {/* Override toggle for date fields */}
@@ -895,10 +948,15 @@ export default function DashboardClient({ username }: { username: string }) {
                                                 />
                                               </div>
                                             )
+                                          ) : (usingGlobalAgent || usingGlobalBrokerage) ? (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 11px', borderRadius: '7px', background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+                                              <span style={{ fontSize: '13px', color: '#16a34a', fontWeight: 500, flex: 1 }}>{isAgentName ? globalAgentName : globalBrokerage}</span>
+                                              <span style={{ fontSize: '10px', color: '#16a34a', background: '#dcfce7', padding: '1px 6px', borderRadius: '10px', fontWeight: 600, whiteSpace: 'nowrap' }}>global</span>
+                                            </div>
                                           ) : (
                                             <input type="text" value={val}
                                               onChange={e => setField(clause.id, field.blankIndex, e.target.value)}
-                                              placeholder="Enter value…" className="finput"
+                                              placeholder={isAgentName ? 'Agent name…' : isBrokerage ? 'Brokerage name…' : 'Enter value…'} className="finput"
                                               style={{ borderColor: val ? '#111' : '#e8e8e6', background: val ? '#fff' : '#fafafa' }}
                                             />
                                           )}
@@ -966,7 +1024,7 @@ export default function DashboardClient({ username }: { username: string }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                 {missingFields.slice(0, 5).map((m, i) => (
                   <p key={i} style={{ fontSize: '11.5px', color: '#78350f', lineHeight: 1.35 }}>
-                    <span style={{ fontSize: '11px' }}>{m.fieldType === 'date' ? '📅' : m.fieldType === 'amount' ? '💲' : '✏️'}</span>
+                    <span style={{ fontSize: '11px' }}>{m.fieldType === 'date' ? '📅' : m.fieldType === 'amount' ? '💲' : m.fieldType === 'agent_name' ? '👤' : m.fieldType === 'brokerage' ? '🏢' : '✏️'}</span>
                     {' '}<strong>{m.clauseTitle}</strong> — {m.fieldLabel}
                   </p>
                 ))}
@@ -1010,9 +1068,10 @@ export default function DashboardClient({ username }: { username: string }) {
             <div style={{ padding: '4px 18px 8px' }}>
               {Array.from(selected.values()).sort((a, b) => (CLAUSE_ORDER[a.clause.id] ?? 999) - (CLAUSE_ORDER[b.clause.id] ?? 999)).map(entry => {
                 const allFilled = entry.clause.fields.length === 0 || entry.clause.fields.every(f => {
-                  const key = `${entry.clause.id}::${f.blankIndex}`;
                   if (f.type === 'date') return !!(entry.fieldValues[f.blankIndex] || globalDate);
                   if (f.type === 'amount') return !!(entry.fieldValues[f.blankIndex] || globalAmount);
+                  if (f.type === 'agent_name') return !!(entry.fieldValues[f.blankIndex] || globalAgentName);
+                  if (f.type === 'brokerage') return !!(entry.fieldValues[f.blankIndex] || globalBrokerage);
                   return !!entry.fieldValues[f.blankIndex];
                 });
                 const filledDates = entry.clause.fields.filter(f => {
